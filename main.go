@@ -82,7 +82,7 @@ func main() {
 }
 
 // Initialize logger interface
-// return
+// return logger representation pointer
 func InitLogger() *syslog.Writer {
 	if logger, err := syslog.New(syslog.LOG_ERR, "WHOIS Server"); err != nil {
 		log.Fatal(err)
