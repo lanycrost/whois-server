@@ -15,6 +15,7 @@ import (
 	"text/template"
 	"bytes"
 	"log"
+	"log/syslog"
 	"os"
 )
 
@@ -28,6 +29,8 @@ const (
 )
 
 var (
+	// Init interface for logging
+	LOGGER = InitLogger()
 	// Initializing help template
 	helpTemplate = InitHelp()
 	// Initializing success template
@@ -56,6 +59,9 @@ var (
 
 
 func main() {
+	// Close logger when end the program
+	defer LOGGER.Close()
+
 	// Resolve TCP address
 	tcpAddr, err := net.ResolveTCPAddr("tcp4", port)
 	checkError(err)
@@ -75,10 +81,22 @@ func main() {
 	}
 }
 
+// Initialize logger interface
+// return
+func InitLogger() *syslog.Writer {
+	if logger, err := syslog.New(syslog.LOG_ERR, "WHOIS Server"); err != nil {
+		log.Fatal(err)
+	} else {
+		return logger
+	}
+
+	return nil
+}
+
 // Initialize Template by name and path
-// @param {string} name name of template
-// @param {string} content response content
-// @return {*template.Template} template representation pointer
+// name name of template
+// content response content
+// template representation pointer
 func InitTemplate( name string, content string ) *template.Template {
 	tmpl, err := template.New(name).Parse(content) // allocates a new, undefined template with the given nam.
 
@@ -89,7 +107,7 @@ func InitTemplate( name string, content string ) *template.Template {
 }
 
 // Initialize Help template
-// @return {string} help template
+// return help template
 func InitHelp() string {
 	helpTemplate := InitTemplate("Help", helpContent) // initialize template pointer
 
@@ -100,23 +118,25 @@ func InitHelp() string {
 }
 
 // Initialize Success Template for handling success queries
-// @return {*template.Template} template representation pointer
+// return template representation pointer
 func InitSuccess() *template.Template {
 	return InitTemplate("Success", successContent)
 }
 
 // Initialize Success More Template for handling success queries
-// @return {*template.Template} template representation pointer
+// return template representation pointer
 func InitSuccessMore() *template.Template {
 	return InitTemplate("Success More", successMoreContent)
 }
 
+// Initialize No Match Template for handling success queries
+// return template representation pointer
 func InitNoMatch() *template.Template {
 	return InitTemplate("No Match", noMatchContent)
 }
 
 // Handle Client WHOIS queries
-// @param {net.Conn} conn generic stream-oriented network connection.
+// conn generic stream-oriented network connection.
 func handleClient(conn net.Conn) {
 	conn.SetReadDeadline(time.Now().Add(maxConnTime)) // set maximum connection time 10 second
 	request := make([]byte, maxReqLength) // set maximum request length to 128B to prevent flood based attacks
@@ -150,8 +170,8 @@ func handleClient(conn net.Conn) {
 }
 
 // Check domain name correctness
-// @param {string} domain generic stream-oriented network connection.
-// @return {bool} if all is OK. return true, if not receive specific error
+// domain generic stream-oriented network connection.
+// if all is OK. return true, if not receive specific error
 func checkDomain(domain string) bool {
 	hasOccurrence := false
 	tldPart := domain[strings.Index(domain, "."):] // find part tld in string
@@ -240,8 +260,8 @@ type Technical struct {
 
 // TODO::Connect to database and send request
 // If all is correct send to client success request
-// @param {string} req client request (domain name)
-// @param {net.Conn} generic stream-oriented network connection.
+// req client request (domain name)
+// generic stream-oriented network connection.
 func handleSuccess(req string, conn net.Conn) {
 	tpl.Reset()
 	err := successTemplate.ExecuteTemplate(&tpl,"Success", SuccessData{
@@ -317,19 +337,19 @@ func handleSuccess(req string, conn net.Conn) {
 
 // Fatal Error handling
 // Log the message and turn off server
-// @param {error} err error interface
+// err error interface
 func checkError(err error) {
 	if err != nil {
-		log.Fatalf("Fatal error: %s", err.Error())
+		LOGGER.Err(err.Error())
 	}
 }
 
 // Warnings handling
 // Log the server messages (for example, client closed connection)
-// @param {error} err error interface
+// err error interface
 func logError(err error) {
 	if err != nil {
-		log.Printf("Warning: %s", err.Error())
+		LOGGER.Debug(err.Error())
 	}
 }
 
@@ -412,5 +432,4 @@ DNSSEC: {{ .DNSSEC }}
 
 No match for "{{ .DomainName }}".
 `
-
 )

@@ -35,7 +35,7 @@ Golang Packages:
   - [strings](https://golang.org/pkg/strings/)
   - [text/template](https://golang.org/pkg/text/template/)
   - [bytes](https://golang.org/pkg/bytes/)
-  - [log](https://golang.org/pkg/log/) TODO migrate to [syslog](https://golang.org/pkg/log/syslog/)
+  - [syslog](https://golang.org/pkg/log/syslog/)
   - [os](https://golang.org/pkg/os/)
   - [gorm](http://jinzhu.me/gorm/)
 
