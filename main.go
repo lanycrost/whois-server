@@ -14,8 +14,8 @@ import (
 	"strings"
 	"text/template"
 	"bytes"
-	"regexp"
 	"log"
+	"os"
 )
 
 const (
@@ -26,23 +26,32 @@ const (
 	// Set maximum request length
 	maxReqLength = 64
 )
+
 var (
 	// Initializing help template
 	helpTemplate = InitHelp()
-	// Initializing top level error template
-	topErrTemplate = InitTopError()
-	// Initializing second level error template
-	secondErrTemplate = InitSecondError()
-	// Initializing syntax error template
-	syntaxErrTemplate = InitSyntaxError()
-	// Initializing domain name length error template
-	lenErrTemplate = InitLenError()
 	// Initializing success template
 	successTemplate = InitSuccess()
 	// Initializing success more template
 	successMoreTemplate = InitSuccessMore()
+	// Initializing no match template
+	noMatchTemplate = InitNoMatch()
 	// Buffer initializing
 	tpl bytes.Buffer
+	// TLD Name
+	TLDNAME = os.Getenv( "TLDNAME" )
+	// TLD WHOIS Server address
+	TLDWHOISADDR = os.Getenv( "TLDWHOISADDR" )
+	// TLD's list
+	TLDS = strings.Split(os.Getenv( "TLDS" ), ",")
+	// DB Host
+	DBHOST = os.Getenv( "DBHOST" )
+	// DB Username
+	DBUNAME = os.Getenv( "DBUNAME" )
+	// DB Password
+	DBPSWD = os.Getenv( "DBPSWD" )
+	// DB Name
+	DBNAME = os.Getenv( "DBNAME" )
 )
 
 
@@ -68,12 +77,11 @@ func main() {
 
 // Initialize Template by name and path
 // @param {string} name name of template
-// @param {string} path path of template
+// @param {string} content response content
 // @return {*template.Template} template representation pointer
-func InitTemplate( name string, path string ) *template.Template {
-	t := template.New(name) // allocates a new, undefined template with the given name.
+func InitTemplate( name string, content string ) *template.Template {
+	tmpl, err := template.New(name).Parse(content) // allocates a new, undefined template with the given nam.
 
-	tmpl, err := t.ParseFiles(path) // parses the named files and associates the resulting templates with t
 	checkError(err)
 	tpl.Reset() // reset buffer story
 
@@ -83,53 +91,9 @@ func InitTemplate( name string, path string ) *template.Template {
 // Initialize Help template
 // @return {string} help template
 func InitHelp() string {
-	helpTemplate := InitTemplate("Help", "./tmpl/help") // initialize template pointer
+	helpTemplate := InitTemplate("Help", helpContent) // initialize template pointer
 
-	err := helpTemplate.ExecuteTemplate(&tpl,"help", nil)  // write template with given parameter
-	checkError(err)
-
-	return tpl.String()
-}
-
-// Initialize Length Error template
-// @return {string} length error template
-func InitLenError() string {
-	helpTemplate := InitTemplate("Error", "./tmpl/error/len_error") // initialize template pointer
-
-	err := helpTemplate.ExecuteTemplate(&tpl,"len_error", nil) // write template with given parameter
-	checkError(err)
-
-	return tpl.String()
-}
-
-// Initialize Syntax Error template
-// @return {string} syntax error template
-func InitSyntaxError() string {
-	helpTemplate := InitTemplate("Error", "./tmpl/error/syntax_error") // initialize template pointer
-
-	err := helpTemplate.ExecuteTemplate(&tpl,"syntax_error", nil) // write template with given parameter
-	checkError(err)
-
-	return tpl.String()
-}
-
-// Initialize Top Level Error template
-// @return {string} top level error template
-func InitTopError() string {
-	helpTemplate := InitTemplate("Error", "./tmpl/error/top_level_error") // initialize template pointer
-
-	err := helpTemplate.ExecuteTemplate(&tpl,"top_level_error", nil) // write template with given parameter
-	checkError(err)
-
-	return tpl.String()
-}
-
-// Initialize Second Level Error template
-// @return {string} second level error template
-func InitSecondError() string {
-	helpTemplate := InitTemplate("Error", "./tmpl/error/second_level_error") // initialize template pointer
-
-	err := helpTemplate.ExecuteTemplate(&tpl,"second_level_error", nil) // write template with given parameter
+	err := helpTemplate.ExecuteTemplate(&tpl,"Help", nil)  // write template with given parameter
 	checkError(err)
 
 	return tpl.String()
@@ -138,13 +102,17 @@ func InitSecondError() string {
 // Initialize Success Template for handling success queries
 // @return {*template.Template} template representation pointer
 func InitSuccess() *template.Template {
-	return InitTemplate("Success", "./tmpl/success/success")
+	return InitTemplate("Success", successContent)
 }
 
 // Initialize Success More Template for handling success queries
 // @return {*template.Template} template representation pointer
 func InitSuccessMore() *template.Template {
-	return InitTemplate("Success", "./tmpl/success/success_more")
+	return InitTemplate("Success More", successMoreContent)
+}
+
+func InitNoMatch() *template.Template {
+	return InitTemplate("No Match", noMatchContent)
 }
 
 // Handle Client WHOIS queries
@@ -170,8 +138,10 @@ func handleClient(conn net.Conn) {
 				conn.Write([]byte(helpTemplate)) // client receive help
 				conn.Close()
 			} else {
-				if checkDomain(req, conn) { // check query correction
+				if checkDomain(req) { // check query correction
 					handleSuccess(req, conn) // all is correct send to client WHOIS data
+				} else {
+					conn.Close() // we are don't owner of this TLD...
 				}
 
 			}
@@ -181,90 +151,91 @@ func handleClient(conn net.Conn) {
 
 // Check domain name correctness
 // @param {string} domain generic stream-oriented network connection.
-// @param {net.Conn} conn generic stream-oriented network connection.
 // @return {bool} if all is OK. return true, if not receive specific error
-func checkDomain(domain string, conn net.Conn) bool {
-	domain = strings.ToLower(domain) // domain name to lowercase
-	match, _ := regexp.MatchString(`^([a-z0-9]+(-[a-z0-9]+)*\.)+[a-z]{2,}$`, domain ) // check domain name correctness by regex
+func checkDomain(domain string) bool {
+	hasOccurrence := false
+	tldPart := domain[strings.Index(domain, "."):] // find part tld in string
 
-	if ! match {
-		conn.Write([]byte(syntaxErrTemplate)) // client have syntax error
-		conn.Close()
-	} else {
-		domainParts := strings.Split(domain, ".") // check domain name parts
-
-		// check this domain name is belongs to us
-		if ( len(domainParts) == 2 && domainParts[1] == "ge" ) ||
-			( len(domainParts) == 3 && (
-				( domainParts[1] == "com" ||
-					domainParts[1] == "edu" ||
-					domainParts[1] == "gov" ||
-					domainParts[1] == "org" ||
-					domainParts[1] == "mil" ||
-					domainParts[1] == "net" ||
-					domainParts[1] == "pvt" ) && domainParts[2] == "ge" ) ) {
-			if len(domainParts[0]) < 2 {
-				conn.Write([]byte(lenErrTemplate)) // for finish check domain name length correctness
-				conn.Close()
-			}
-			return true
-		} else {
-			// send specific error by domain name
-			if len(domainParts) == 2 {
-				conn.Write([]byte(topErrTemplate)) // send top level error
-				conn.Close()
-			} else {
-				conn.Write([]byte(secondErrTemplate)) // send second level serror
-				conn.Close()
-			}
+	for _, tld := range TLDS {
+		if strings.ToUpper(tldPart) == strings.ToUpper(tld) {
+			hasOccurrence = true
+			break
 		}
 	}
 
-	return true
+	return hasOccurrence
 }
 
 type SuccessData struct {
-	DomainName	string
-	Registrar	string
-	Status		string
-	Registrant	Registrant
+	TLDNAME			string
+	TLDWHOISADDR		string
+	DomainName		string
+	Registrar		Registrar
+	Status			string
+	DomainID		string
+	UpdatedDate		string
+	CreationDate	string
+	ExpirationDate	string
+	Registrant		Registrant
 }
 
 type Registrant struct {
-	Name		string
-	Address1	string
-	Address2	string
-	ZIP			string
-	Country		string
+	Name			string
+	Organization	string
+	Street			string
+	City			string
+	State			string
+	ZIP				string
+	Country			string
+	Phone			string
+	PhoneExt		string
+	Fax				string
+	FaxExt			string
+	Email			string
+}
+
+type Registrar struct {
+	Name	string
+	URL		string
+	Email	string
+	Phone	string
 }
 
 type SuccessMoreData struct {
 	Administrative	Administrative
 	Technical		Technical
 	DNS				[]string
-	Registered		string
-	Modified		string
-	Expires			string
+	DNSSEC			string
 }
 
 type Administrative struct {
-	Name		string
-	Address1	string
-	Address2	string
-	ZIP			string
-	Country		string
-	Email		string
-	Phone		string
+	Name			string
+	Organization 	string
+	Street			string
+	City			string
+	State			string
+	ZIP				string
+	Country			string
+	Email			string
+	Phone			string
+	PhoneExt		string
+	Fax				string
+	FaxExt			string
 }
 
 type Technical struct {
-	Name		string
-	Address1	string
-	Address2	string
-	ZIP			string
-	Country		string
-	Email		string
-	Phone		string
+	Name			string
+	Organization 	string
+	Street			string
+	City			string
+	State			string
+	ZIP				string
+	Country			string
+	Email			string
+	Phone			string
+	PhoneExt		string
+	Fax				string
+	FaxExt			string
 }
 
 // TODO::Connect to database and send request
@@ -273,45 +244,71 @@ type Technical struct {
 // @param {net.Conn} generic stream-oriented network connection.
 func handleSuccess(req string, conn net.Conn) {
 	tpl.Reset()
-	err := successTemplate.ExecuteTemplate(&tpl,"success", SuccessData{
+	err := successTemplate.ExecuteTemplate(&tpl,"Success", SuccessData{
+		TLDNAME: TLDNAME,
+		TLDWHOISADDR: TLDWHOISADDR,
 		DomainName: req,
-		Registrar: "RegNest.com (RegNest LLC)",
-		Status: "active, registrar locked",
+		DomainID: "426007",
+		UpdatedDate: "2017-04-21T02:06:59-0700",
+		CreationDate: "1990-05-21T21:00:00-0700",
+		ExpirationDate: "2019-05-22T00:00:00-0700",
+		Registrar: Registrar{
+			Name: "RegNest.com (RegNest LLC)",
+			URL: "https://regnest.com",
+			Email: "support@regnest.com",
+			Phone: "+37493305688",
+		},
 		Registrant: Registrant{
 			Name: "John Doe",
-			Address1: "123 6th St.",
-			Address2: "Melbourne, FL",
-			ZIP: "32904",
+			Organization: "World LLC.",
+			Street: "123 6th St.",
+			City: "Melbourne",
+			State: "FL",
 			Country: "US",
+			Phone: "+37493305688",
+			PhoneExt: "",
+			Fax: "+37493305688",
+			FaxExt: "",
+			ZIP: "32904",
+			Email: "john@doe.com",
+
 		},
 	} )
 	checkError(err)
 	conn.Write([]byte(tpl.String()))
 
 	tpl.Reset()
-	err = successMoreTemplate.ExecuteTemplate(&tpl,"success_more", SuccessMoreData{
+	err = successMoreTemplate.ExecuteTemplate(&tpl,"Success More", SuccessMoreData{
 		Administrative: Administrative{
 			Name: "John Doe",
-			Address1: "123 6th St.",
-			Address2: "Melbourne, FL",
+			Organization: "World LLC.",
+			Street: "123 6th St.",
+			City: "Melbourne",
+			State: "FL",
 			ZIP: "32904",
 			Country: "US",
-			Phone:"6503491051",
+			Phone: "6503491051",
+			PhoneExt: "",
+			Fax: "6503491051",
+			FaxExt:"",
 			Email:"john@doe.ge",
 		},
 		Technical: Technical{
 			Name: "John Doe",
-			Address1: "123 6th St.",
-			Address2: "Melbourne, FL",
+			Organization: "World LLC.",
+			Street: "123 6th St.",
+			City: "Melbourne",
+			State: "FL",
 			ZIP: "32904",
 			Country: "US",
 			Phone:"6503491051",
+			PhoneExt: "",
+			Fax: "6503491051",
+			FaxExt:"",
 			Email:"john@doe.ge",
 		},
 		DNS: []string{"coco.ns.cloudflare.com","todd.ns.cloudflare.com"},
-		Registered: "2004-12-28",
-		Modified: "2017-06-14",
-		Expires: "2022-12-28",
+		DNSSEC: "unsigned",
 	} )
 	checkError(err)
 	conn.Write([]byte(tpl.String()))
@@ -335,3 +332,85 @@ func logError(err error) {
 		log.Printf("Warning: %s", err.Error())
 	}
 }
+
+// Template Variables
+const (
+	// Help Response content
+	helpContent = `
+	
+	HELP
+	
+`
+
+	// Success Response Content
+	successContent = `
+%
+%{{ .TLDNAME }} TLD whois server
+% Please see 'whois -h {{ .TLDWHOISADDR }} help' for usage.
+%
+
+Domain Name: {{ .DomainName }}
+Registry Domain ID: {{ .DomainID }}
+Updated Date: {{ .UpdatedDate }}
+Creation Date: {{ .CreationDate }}
+Expiration Date: {{ .ExpirationDate }}
+Registrar: {{ .Registrar.Name }}
+Registrar URL: {{ .Registrar.URL }}
+Registrar Abuse Contact Email: {{ .Registrar.Email }}
+Registrar Abuse Contact Phone: {{ .Registrar.Phone }}
+Registrant Name: {{ .Registrant.Name }}
+Registrant Organization: {{ .Registrant.Organization }}
+Registrant Street: {{ .Registrant.Street }}
+Registrant City: {{ .Registrant.City }}
+Registrant State/Province: {{ .Registrant.State }}
+Registrant Postal Code: {{ .Registrant.ZIP }}
+Registrant Country: {{ .Registrant.Country }}
+Registrant Phone: {{ .Registrant.Phone }}
+Registrant Phone Ext: {{ .Registrant.PhoneExt }}
+Registrant Fax: {{ .Registrant.Fax }}
+Registrant Fax Ext: {{ .Registrant.FaxExt }}
+Registrant Email: {{ .Registrant.Email }}
+`
+
+	// Success More Response Content
+	successMoreContent = `
+Admin Name: {{ .Administrative.Name }}
+Admin Organization: {{ .Administrative.Organization }}
+Admin Street: {{ .Administrative.Street }}
+Admin City: {{ .Administrative.City }}
+Admin State/Province: {{ .Administrative.State }}
+Admin Postal Code: {{ .Administrative.ZIP }}
+Admin Country: {{ .Administrative.Country }}
+Admin Phone: {{ .Administrative.Phone }}
+Admin Phone Ext: {{ .Administrative.PhoneExt }}
+Admin Fax: {{ .Administrative.Fax }}
+Admin Fax Ext: {{ .Administrative.FaxExt }}
+Admin Email: {{ .Administrative.Email }}
+Tech Name: {{ .Technical.Name }}
+Tech Organization: {{ .Technical.Organization }}
+Tech Street: {{ .Technical.Street }}
+Tech City: {{ .Technical.City }}
+Tech State/Province: {{ .Technical.State }}
+Tech Postal Code: {{ .Technical.ZIP }}
+Tech Country: {{ .Technical.Country }}
+Tech Phone: {{ .Technical.Phone }}
+Tech Phone Ext: {{ .Technical.PhoneExt }}
+Tech Fax: {{ .Technical.Fax }}
+Tech Fax Ext: {{ .Technical.FaxExt }}
+Tech Email: {{ .Technical.Email }}
+{{range $dns := .DNS}}Name Server: {{ $dns }}
+{{end}}
+DNSSEC: {{ .DNSSEC }}
+`
+
+	// No Match Response Content
+	noMatchContent = `
+%
+%{{ .TLDNAME }} TLD whois server
+% Please see 'whois -h {{ .TLDWHOISURL }} help' for usage.
+%
+
+No match for "{{ .DomainName }}".
+`
+
+)
