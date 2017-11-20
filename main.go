@@ -15,8 +15,12 @@ import (
 	"text/template"
 	"bytes"
 	"log"
-	"log/syslog"
+	syslog "log/syslog"
 	"os"
+
+	"github.com/jinzhu/gorm"
+	_ "github.com/jinzhu/gorm/dialects/postgres"
+	"fmt"
 )
 
 const (
@@ -29,8 +33,10 @@ const (
 )
 
 var (
-	// Init interface for logging
-	LOGGER = InitLogger()
+	// DB interface
+	DB 		*gorm.DB
+	// interface for logging
+	LOGGER 	*syslog.Writer
 	// Initializing help template
 	helpTemplate = InitHelp()
 	// Initializing success template
@@ -55,11 +61,25 @@ var (
 	DBPSWD = os.Getenv( "DBPSWD" )
 	// DB Name
 	DBNAME = os.Getenv( "DBNAME" )
+	// DB SSL Mode
+	DBSSL = func() string {
+		DBSSL := os.Getenv("DBSSL")
+
+		if DBSSL != "" {
+			return DBSSL
+		}
+
+		return "disable"
+	}
 )
 
 
 func main() {
-	// Close logger when end the program
+	InitLogger()
+	InitDB()
+
+	// Close DB and logger when end the program
+	defer DB.Close()
 	defer LOGGER.Close()
 
 	// Resolve TCP address
@@ -83,14 +103,19 @@ func main() {
 
 // Initialize logger interface
 // return logger representation pointer
-func InitLogger() *syslog.Writer {
-	if logger, err := syslog.New(syslog.LOG_ERR, "WHOIS Server"); err != nil {
+func InitLogger() {
+	var err error
+	if LOGGER, err = syslog.New(syslog.LOG_ERR, "WHOIS Server"); err != nil {
 		log.Fatal(err)
-	} else {
-		return logger
 	}
+}
 
-	return nil
+func InitDB() {
+	var err error
+	if DB, err = gorm.Open("postgres", fmt.Sprintf("host=%s user=%s dbname=%s password=%s sslmode=%s",
+		DBHOST, DBUNAME, DBNAME, DBPSWD, DBSSL ) ); err != nil {
+		log.Fatal(err)
+	}
 }
 
 // Initialize Template by name and path
@@ -188,7 +213,7 @@ func checkDomain(domain string) bool {
 
 type SuccessData struct {
 	TLDNAME			string
-	TLDWHOISADDR		string
+	TLDWHOISADDR	string
 	DomainName		string
 	Registrar		Registrar
 	Status			string

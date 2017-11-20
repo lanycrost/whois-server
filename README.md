@@ -21,6 +21,7 @@ For Starting server you should be set some environment variables.
     - DBUNAME: Username of DB
     - DBPSWD: Password for access to DB
     - DBNAME: DB name where store the WHOIS data
+    - DBSSL: DB SSL Mode (disable or enable) default value disable
      
 ```
 DBNAME=AMNIC TLDWHOISADDR=whois.amnic.net TLDS=.ge,.gov.ge,.school.ge DBHOST=localhost DBUNAME=root DBPSWD=root DBNAME=whois go run main.go
