@@ -15,7 +15,7 @@ import (
 	"text/template"
 	"bytes"
 	"log"
-	syslog "log/syslog"
+	"log/syslog"
 	"os"
 
 	"github.com/jinzhu/gorm"
@@ -62,15 +62,7 @@ var (
 	// DB Name
 	DBNAME = os.Getenv( "DBNAME" )
 	// DB SSL Mode
-	DBSSL = func() string {
-		DBSSL := os.Getenv("DBSSL")
-
-		if DBSSL != "" {
-			return DBSSL
-		}
-
-		return "disable"
-	}
+	DBSSL = os.Getenv( "DBSSL" )
 )
 
 
@@ -112,6 +104,7 @@ func InitLogger() {
 
 func InitDB() {
 	var err error
+
 	if DB, err = gorm.Open("postgres", fmt.Sprintf("host=%s user=%s dbname=%s password=%s sslmode=%s",
 		DBHOST, DBUNAME, DBNAME, DBPSWD, DBSSL ) ); err != nil {
 		log.Fatal(err)
@@ -166,6 +159,7 @@ func handleClient(conn net.Conn) {
 	conn.SetReadDeadline(time.Now().Add(maxConnTime)) // set maximum connection time 10 second
 	request := make([]byte, maxReqLength) // set maximum request length to 128B to prevent flood based attacks
 	defer conn.Close()  // close connection before exit
+
 	for {
 		readLen, err := conn.Read(request) // read client query
 
@@ -211,153 +205,138 @@ func checkDomain(domain string) bool {
 	return hasOccurrence
 }
 
-type SuccessData struct {
-	TLDNAME			string
-	TLDWHOISADDR	string
-	DomainName		string
-	Registrar		Registrar
-	Status			string
-	DomainID		string
-	UpdatedDate		string
-	CreationDate	string
-	ExpirationDate	string
-	Registrant		Registrant
+// ---- GORM Models ---- //
+// ------- Start ------- //
+
+type DNS struct {
+	DNS						string			`gorm:"primary_key;column:dns"`
+	StatusID				uint			`gorm:"column:statusId"`
+	HasDnsSec				bool			`gorm:"column:hasDnsSec"`
+	RegistrarID				uint			`gorm:"column:registrarId"`
+	UpdatedDate				time.Time		`gorm:"column:updatedDate"`
+	CreationDate			time.Time		`gorm:"column:creationDate"`
+	ExpirationDate			time.Time		`gorm:"column:expirationDate"`
+	Status					string  		`gorm:"type:varchar(10);column:status"`
+	DnsSecStatus			string			`gorm:"type:varchar(20);column:dnsSecStatus"`
+
+	// Registrar info
+	RegistrarName			string			`gorm:"type:varchar;column:registrarName"`
+	RegistrarUrl			string			`gorm:"type:varchar;column:registrarUrl"`
+	RegistrarContactEmail	string			`gorm:"type:varchar;column:registrarContactEmail"`
+	RegistrarContactPhone	string			`gorm:"type:varchar;column:registrarContactPhone"`
+
+	// Registrant info
+	RegistrantName  		string  		`gorm:"type:varchar;column:registrantName"`
+	RegistrantOrganization  string  		`gorm:"type:varchar;column:registrantOrganization"`
+	RegistrantStreet		string  		`gorm:"type:varchar;column:registrantStreet"`
+	RegistrantCity			string  		`gorm:"type:varchar;column:registrantCity"`
+	RegistrantProvince		string  		`gorm:"type:varchar;column:registrantProvince"`
+	RegistrantZipCode		uint	  		`gorm:"type:varchar;column:registrantZipCode"`
+	RegistrantCountry		string  		`gorm:"type:varchar;column:registrantCountry"`
+	RegistrantPhone			string  		`gorm:"type:varchar;column:registrantPhone"`
+	RegistrantPhoneExt		string  		`gorm:"type:varchar;column:registrantPhoneExt"`
+	RegistrantFax			string  		`gorm:"type:varchar;column:registrantFax"`
+	RegistrantFaxExt		string  		`gorm:"type:varchar;column:registrantFaxExt"`
+	RegistrantEmail			string  		`gorm:"type:varchar;column:registrantEmail"`
+
+	// Admin info
+	AdminName  				string  		`gorm:"type:varchar;column:adminName"`
+	AdminOrganization  		string  		`gorm:"type:varchar;column:adminOrganization"`
+	AdminStreet				string  		`gorm:"type:varchar;column:adminStreet"`
+	AdminCity				string  		`gorm:"type:varchar;column:adminCity"`
+	AdminProvince			string  		`gorm:"type:varchar;column:adminProvince"`
+	AdminZipCode			uint	  		`gorm:"type:varchar;column:adminZipCode"`
+	AdminCountry			string  		`gorm:"type:varchar;column:adminCountry"`
+	AdminPhone				string  		`gorm:"type:varchar;column:adminPhone"`
+	AdminPhoneExt			string  		`gorm:"type:varchar;column:adminPhoneExt"`
+	AdminFax				string  		`gorm:"type:varchar;column:adminFax"`
+	AdminFaxExt				string  		`gorm:"type:varchar;column:adminFaxExt"`
+	AdminEmail				string  		`gorm:"type:varchar;column:adminEmail"`
+
+	// Tech info
+	TechName  				string  		`gorm:"type:varchar;column:techName"`
+	TechOrganization  		string  		`gorm:"type:varchar;column:techOrganization"`
+	TechStreet				string  		`gorm:"type:varchar;column:techStreet"`
+	TechCity				string  		`gorm:"type:varchar;column:techCity"`
+	TechProvince			string  		`gorm:"type:varchar;column:techProvince"`
+	TechZipCode				uint	  		`gorm:"type:varchar;column:techZipCode"`
+	TechCountry				string  		`gorm:"type:varchar;column:techCountry"`
+	TechPhone				string  		`gorm:"type:varchar;column:techPhone"`
+	TechPhoneExt			string  		`gorm:"type:varchar;column:techPhoneExt"`
+	TechFax					string  		`gorm:"type:varchar;column:techFax"`
+	TechFaxExt				string  		`gorm:"type:varchar;column:techFaxExt"`
+	TechEmail				string  		`gorm:"type:varchar;column:techEmail"`
+
+	Nameservers				[]Nameserver
 }
 
-type Registrant struct {
-	Name			string
-	Organization	string
-	Street			string
-	City			string
-	State			string
-	ZIP				string
-	Country			string
-	Phone			string
-	PhoneExt		string
-	Fax				string
-	FaxExt			string
-	Email			string
+type Nameserver struct {
+	ID 				uint 	`gorm:"primary_key"`
+	DNSName			string	`gorm:"type:varchar(255);column:dns"`
+	Nameserver		string	`gorm:"type:varchar(255);column:nameserver"`
 }
 
-type Registrar struct {
-	Name	string
-	URL		string
-	Email	string
-	Phone	string
+func (d DNS) TableName() string {
+	return "data"
 }
 
-type SuccessMoreData struct {
-	Administrative	Administrative
-	Technical		Technical
-	DNS				[]string
-	DNSSEC			string
+func (n Nameserver) TableName() string {
+	return "nameserver"
 }
 
-type Administrative struct {
-	Name			string
-	Organization 	string
-	Street			string
-	City			string
-	State			string
-	ZIP				string
-	Country			string
-	Email			string
-	Phone			string
-	PhoneExt		string
-	Fax				string
-	FaxExt			string
-}
+// ---- GORM Models ---- //
+// -------- End -------- //
 
-type Technical struct {
-	Name			string
-	Organization 	string
-	Street			string
-	City			string
-	State			string
-	ZIP				string
-	Country			string
-	Email			string
-	Phone			string
-	PhoneExt		string
-	Fax				string
-	FaxExt			string
-}
-
-// TODO::Connect to database and send request
 // If all is correct send to client success request
 // req client request (domain name)
 // generic stream-oriented network connection.
 func handleSuccess(req string, conn net.Conn) {
-	tpl.Reset()
-	err := successTemplate.ExecuteTemplate(&tpl,"Success", SuccessData{
-		TLDNAME: TLDNAME,
-		TLDWHOISADDR: TLDWHOISADDR,
-		DomainName: req,
-		DomainID: "426007",
-		UpdatedDate: "2017-04-21T02:06:59-0700",
-		CreationDate: "1990-05-21T21:00:00-0700",
-		ExpirationDate: "2019-05-22T00:00:00-0700",
-		Registrar: Registrar{
-			Name: "RegNest.com (RegNest LLC)",
-			URL: "https://regnest.com",
-			Email: "support@regnest.com",
-			Phone: "+37493305688",
-		},
-		Registrant: Registrant{
-			Name: "John Doe",
-			Organization: "World LLC.",
-			Street: "123 6th St.",
-			City: "Melbourne",
-			State: "FL",
-			Country: "US",
-			Phone: "+37493305688",
-			PhoneExt: "",
-			Fax: "+37493305688",
-			FaxExt: "",
-			ZIP: "32904",
-			Email: "john@doe.com",
+	var dns = DNS{}
 
-		},
-	} )
-	checkError(err)
-	conn.Write([]byte(tpl.String()))
+	DB.Where("dns = ?", req).Find(&dns)
 
-	tpl.Reset()
-	err = successMoreTemplate.ExecuteTemplate(&tpl,"Success More", SuccessMoreData{
-		Administrative: Administrative{
-			Name: "John Doe",
-			Organization: "World LLC.",
-			Street: "123 6th St.",
-			City: "Melbourne",
-			State: "FL",
-			ZIP: "32904",
-			Country: "US",
-			Phone: "6503491051",
-			PhoneExt: "",
-			Fax: "6503491051",
-			FaxExt:"",
-			Email:"john@doe.ge",
-		},
-		Technical: Technical{
-			Name: "John Doe",
-			Organization: "World LLC.",
-			Street: "123 6th St.",
-			City: "Melbourne",
-			State: "FL",
-			ZIP: "32904",
-			Country: "US",
-			Phone:"6503491051",
-			PhoneExt: "",
-			Fax: "6503491051",
-			FaxExt:"",
-			Email:"john@doe.ge",
-		},
-		DNS: []string{"coco.ns.cloudflare.com","todd.ns.cloudflare.com"},
-		DNSSEC: "unsigned",
-	} )
-	checkError(err)
-	conn.Write([]byte(tpl.String()))
-	conn.Close()
+	fmt.Println(dns.DNS)
+
+	if dns.DNS != "" {
+		DB.Find(&dns.Nameservers)
+
+		res := struct {
+			DNS				DNS
+			TLDNAME			string
+			TLDWHOISADDR	string
+		}{
+			DNS:			dns,
+			TLDWHOISADDR:	TLDWHOISADDR,
+			TLDNAME:		TLDNAME,
+		}
+
+		tpl.Reset()
+		err := successTemplate.ExecuteTemplate(&tpl,"Success", res)
+		checkError(err)
+		conn.Write([]byte(tpl.String()))
+
+		tpl.Reset()
+		err = successMoreTemplate.ExecuteTemplate(&tpl,"Success More", res)
+		checkError(err)
+		conn.Write([]byte(tpl.String()))
+		conn.Close()
+	} else {
+		res := struct {
+			DNS				string
+			TLDNAME			string
+			TLDWHOISADDR	string
+		}{
+			DNS:			req,
+			TLDWHOISADDR:	TLDWHOISADDR,
+			TLDNAME:		TLDNAME,
+		}
+
+		tpl.Reset()
+		err := noMatchTemplate.ExecuteTemplate(&tpl,"No Match", res)
+		checkError(err)
+		conn.Write([]byte(tpl.String()))
+		conn.Close()
+	}
 }
 
 // Fatal Error handling
@@ -394,67 +373,66 @@ const (
 % Please see 'whois -h {{ .TLDWHOISADDR }} help' for usage.
 %
 
-Domain Name: {{ .DomainName }}
-Registry Domain ID: {{ .DomainID }}
-Updated Date: {{ .UpdatedDate }}
-Creation Date: {{ .CreationDate }}
-Expiration Date: {{ .ExpirationDate }}
-Registrar: {{ .Registrar.Name }}
-Registrar URL: {{ .Registrar.URL }}
-Registrar Abuse Contact Email: {{ .Registrar.Email }}
-Registrar Abuse Contact Phone: {{ .Registrar.Phone }}
-Registrant Name: {{ .Registrant.Name }}
-Registrant Organization: {{ .Registrant.Organization }}
-Registrant Street: {{ .Registrant.Street }}
-Registrant City: {{ .Registrant.City }}
-Registrant State/Province: {{ .Registrant.State }}
-Registrant Postal Code: {{ .Registrant.ZIP }}
-Registrant Country: {{ .Registrant.Country }}
-Registrant Phone: {{ .Registrant.Phone }}
-Registrant Phone Ext: {{ .Registrant.PhoneExt }}
-Registrant Fax: {{ .Registrant.Fax }}
-Registrant Fax Ext: {{ .Registrant.FaxExt }}
-Registrant Email: {{ .Registrant.Email }}
+Domain Name: {{ .DNS.DNS }}
+Updated Date: {{ .DNS.UpdatedDate }}
+Creation Date: {{ .DNS.CreationDate }}
+Expiration Date: {{ .DNS.ExpirationDate }}
+Registrar: {{ .DNS.RegistrarName }}
+Registrar URL: {{ .DNS.RegistrarUrl }}
+Registrar Abuse Contact Email: {{ .DNS.RegistrarContactEmail }}
+Registrar Abuse Contact Phone: {{ .DNS.RegistrarContactPhone }}
+Registrant Name: {{ .DNS.RegistrantName }}
+Registrant Organization: {{ .DNS.RegistrantOrganization }}
+Registrant Street: {{ .DNS.RegistrantStreet }}
+Registrant City: {{ .DNS.RegistrantCity }}
+Registrant State/Province: {{ .DNS.RegistrantProvince }}
+Registrant Postal Code: {{ .DNS.RegistrantZipCode }}
+Registrant Country: {{ .DNS.RegistrantCountry }}
+Registrant Phone: {{ .DNS.RegistrantPhone }}
+Registrant Phone Ext: {{ .DNS.RegistrantPhoneExt }}
+Registrant Fax: {{ .DNS.RegistrantFax }}
+Registrant Fax Ext: {{ .DNS.RegistrantFaxExt }}
+Registrant Email: {{ .DNS.RegistrantEmail }}
 `
 
 	// Success More Response Content
 	successMoreContent = `
-Admin Name: {{ .Administrative.Name }}
-Admin Organization: {{ .Administrative.Organization }}
-Admin Street: {{ .Administrative.Street }}
-Admin City: {{ .Administrative.City }}
-Admin State/Province: {{ .Administrative.State }}
-Admin Postal Code: {{ .Administrative.ZIP }}
-Admin Country: {{ .Administrative.Country }}
-Admin Phone: {{ .Administrative.Phone }}
-Admin Phone Ext: {{ .Administrative.PhoneExt }}
-Admin Fax: {{ .Administrative.Fax }}
-Admin Fax Ext: {{ .Administrative.FaxExt }}
-Admin Email: {{ .Administrative.Email }}
-Tech Name: {{ .Technical.Name }}
-Tech Organization: {{ .Technical.Organization }}
-Tech Street: {{ .Technical.Street }}
-Tech City: {{ .Technical.City }}
-Tech State/Province: {{ .Technical.State }}
-Tech Postal Code: {{ .Technical.ZIP }}
-Tech Country: {{ .Technical.Country }}
-Tech Phone: {{ .Technical.Phone }}
-Tech Phone Ext: {{ .Technical.PhoneExt }}
-Tech Fax: {{ .Technical.Fax }}
-Tech Fax Ext: {{ .Technical.FaxExt }}
-Tech Email: {{ .Technical.Email }}
-{{range $dns := .DNS}}Name Server: {{ $dns }}
+Admin Name: {{ .DNS.AdminName }}
+Admin Organization: {{ .DNS.AdminOrganization }}
+Admin Street: {{ .DNS.AdminStreet }}
+Admin City: {{ .DNS.AdminCity }}
+Admin State/Province: {{ .DNS.AdminProvince }}
+Admin Postal Code: {{ .DNS.AdminZipCode }}
+Admin Country: {{ .DNS.AdminCountry }}
+Admin Phone: {{ .DNS.AdminPhone }}
+Admin Phone Ext: {{ .DNS.AdminPhoneExt }}
+Admin Fax: {{ .DNS.AdminFax }}
+Admin Fax Ext: {{ .DNS.AdminFaxExt }}
+Admin Email: {{ .DNS.AdminEmail }}
+Tech Name: {{ .DNS.TechName }}
+Tech Organization: {{ .DNS.TechOrganization }}
+Tech Street: {{ .DNS.TechStreet }}
+Tech City: {{ .DNS.TechCity }}
+Tech State/Province: {{ .DNS.TechProvince }}
+Tech Postal Code: {{ .DNS.TechZipCode }}
+Tech Country: {{ .DNS.TechCountry }}
+Tech Phone: {{ .DNS.TechPhone }}
+Tech Phone Ext: {{ .DNS.TechPhoneExt }}
+Tech Fax: {{ .DNS.TechFax }}
+Tech Fax Ext: {{ .DNS.TechFaxExt }}
+Tech Email: {{ .DNS.TechEmail }}
+{{range $dns := .DNS.Nameservers}}Name Server: {{ $dns.Nameserver }}
 {{end}}
-DNSSEC: {{ .DNSSEC }}
+DNSSEC: {{ .DNS.DnsSecStatus }}
 `
 
 	// No Match Response Content
 	noMatchContent = `
 %
 %{{ .TLDNAME }} TLD whois server
-% Please see 'whois -h {{ .TLDWHOISURL }} help' for usage.
+% Please see 'whois -h {{ .TLDWHOISADDR }} help' for usage.
 %
 
-No match for "{{ .DomainName }}".
+No match for "{{ .DNS }}".
 `
 )
